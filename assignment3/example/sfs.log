@@ -1,0 +1,37 @@
+
+sfs_init()
+    conn:
+    proto_major = 7
+    proto_minor = 13
+    async_read = 1
+    max_write = 131072
+    max_readahead = 131072
+    capable = 0000007b
+    want = 00000010
+    context:
+    fuse = 06d2f500
+    uid = 0
+    gid = 0
+    pid = 0
+    private_data = 06d2f010
+    logfile = 06d2f030
+    diskfile = /ilab/users/sd925/assignment3/example/sfs
+    umask = 00000
+
+Initial size: 75498496
+
+sfs_getattr(path="/", statbuf=0xcfffed10)
+
+sfs_opendir(path="/", fi=0xcfffed80)
+
+sfs_readdir(path: /)
+
+sfs_getattr(path="/", statbuf=0xcfffed10)
+
+sfs_getattr(path="/", statbuf=0xd4e23d10)
+
+sfs_getattr(path="/", statbuf=0xd4e23d10)
+
+sfs_getattr(path="/", statbuf=0xcfffed10)
+
+sfs_destroy(userdata=0x06d2f010)
