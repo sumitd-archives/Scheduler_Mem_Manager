@@ -4,7 +4,7 @@
 #include <ucontext.h>
 #include <stdbool.h>
 #include <time.h>
-
+#include "my_memory_manager.h"
 typedef enum states
 {
     RUNNING,
@@ -64,9 +64,9 @@ Node * PopulateContext(ucontext_t *);
 void Scheduler();
 void my_pthread_scheduler_init();
 void createTimer(timer_t * , int , int);
+int GetThreadId(); 
 //void function(void);
 
 #define DEFAULT_BURST 2
-#define MEM 512000
-
+#define MEM 6144 
 #endif

@@ -1,4 +1,5 @@
 #include "my_pthread_t.h"
+//#include "my_memory_manager.h"
 #include <stdlib.h>
 #include <time.h>
 #include <stdio.h>
@@ -7,6 +8,8 @@
 #include <sys/syscall.h>
 #include <unistd.h>
 
+#define malloc(x) myallocate(x , USER)
+char thread_stack[MEM];
 Node * running = NULL;
 Node * head = NULL;
 Node * tail = NULL;
@@ -24,6 +27,7 @@ unsigned unique_id = 1;
 void TimerHandlerInit();
 
 void my_pthread_scheduler_init() {
+    mem_manager_init();
     TimerHandlerInit();
     if (!main_exists) {
       //This is the first time the scheduler has been invoked.
@@ -52,7 +56,7 @@ void timerHandler(int signum , siginfo_t *si , void * uc) {
    }
    else if ( *tidp == timer2 ) {
         //give highest priority to oldest ;
-       IncreasePriority();
+        IncreasePriority();
    }
 }
 
@@ -85,15 +89,26 @@ void createTimer(timer_t * timerId , int interval , int signum) {
 }
 
 int my_pthread_create(my_p_thread_t * thread, my_pthread_attr_t * attr, void* (*function)(void*), void * arg) {
-    my_pthread_t * tcb = (my_pthread_t*)malloc(sizeof(my_pthread_t));
-    ucontext_t * new_thread = (ucontext_t*)malloc(sizeof(ucontext_t));
+    my_pthread_t * tcb = (my_pthread_t*)myallocate(sizeof(my_pthread_t) , LIBRARY);
+    if (tcb == NULL) {
+        printf("No more available for library calls . Terminating process\n");
+        exit(0);
+    }
+    ucontext_t * new_thread = (ucontext_t*)myallocate(sizeof(ucontext_t) , LIBRARY);
+    if (new_thread == NULL) {
+        printf("No more available for library calls . Terminating process\n");
+        exit(0);
+    }
     getcontext(new_thread);
     new_thread->uc_link = 0;
-    new_thread->uc_stack.ss_sp = malloc(MEM);
+    //new_thread->uc_stack.ss_sp = malloc(MEM);
+    new_thread->uc_stack.ss_sp = thread_stack;
+    //new_thread->uc_stack.ss_sp = myallocate(MEM , LIBRARY);
     new_thread->uc_stack.ss_size = MEM;
     new_thread->uc_stack.ss_flags = 0;
     //void (*func) (void) =  (void(*)(void)) function;
     void (*func) (void) =  (void*) function;
+    //printf("new_thread = %d\n" , new_thread->uc_stack.ss_size);
     makecontext(new_thread , func , 0);
     sigprocmask(SIG_BLOCK , &set , NULL);
     *thread = unique_id++;
@@ -103,7 +118,11 @@ int my_pthread_create(my_p_thread_t * thread, my_pthread_attr_t * attr, void* (*
     tcb->state = RUNNING;
     tcb->last_start_time = GetCurrentTime();
     tcb->ret_val_ptr = NULL;
-    Node * new_node = (Node*)malloc(sizeof(Node));
+    Node * new_node = (Node*)myallocate(sizeof(Node) , LIBRARY);
+    if (new_node == NULL) {
+        printf("No more available for library calls . Terminating process\n");
+        exit(0);
+    }
     new_node->tcb = tcb;
     new_node->prev = NULL;
     PushToFront(new_node);
@@ -118,6 +137,8 @@ void my_pthread_exit(void * value_ptr) {
     */
     sigprocmask(SIG_BLOCK , &set , NULL);
 
+    //Free memory pages
+    FreeMemoryPages();
     /*Change the state to terminated and add this thread to 
     the list of completed threads*/
     running->tcb->state = TERMINATED;
@@ -129,7 +150,7 @@ void my_pthread_exit(void * value_ptr) {
     running->next = NULL;
     running->prev = NULL;
     running = NULL;
-    sigprocmask(SIG_UNBLOCK , &set , NULL);
+    //sigprocmask(SIG_UNBLOCK , &set , NULL);
     
     //call the scheduler
     Scheduler();
@@ -160,8 +181,16 @@ int my_pthread_yield () {
 }
 
 Node * PopulateContext(ucontext_t * context) {
-    my_pthread_t * tcb = (my_pthread_t*)malloc(sizeof(my_pthread_t));
-    my_p_thread_t * thread = (my_p_thread_t*)malloc(sizeof(my_p_thread_t));
+    my_pthread_t * tcb = (my_pthread_t*)myallocate(sizeof(my_pthread_t) , LIBRARY);
+    if (tcb == NULL) {
+        printf("No more available for library calls . Terminating process\n");
+        exit(0);
+    }
+    my_p_thread_t * thread = (my_p_thread_t*)myallocate(sizeof(my_p_thread_t) , LIBRARY);
+    if (thread == NULL) {
+        printf("No more available for library calls . Terminating process\n");
+        exit(0);
+    }
     *thread = unique_id++;
     tcb->id = thread;
     getcontext(context);
@@ -169,14 +198,22 @@ Node * PopulateContext(ucontext_t * context) {
     tcb->burst = DEFAULT_BURST;
     tcb->state = RUNNING;
     tcb->ret_val_ptr = NULL;
-    Node * new_node = (Node*)malloc(sizeof(Node));
+    Node * new_node = (Node*)myallocate(sizeof(Node) , LIBRARY);
+    if (new_node == NULL) {
+        printf("No more available for library calls . Terminating process\n");
+        exit(0);
+    }
     new_node->tcb = tcb;
     new_node->tcb->last_start_time = GetCurrentTime();
     return new_node;
 }
 
 void CompletedListAdd(my_pthread_t * thread) {
-    Completed * node = (Completed*)malloc(sizeof(Completed));
+    Completed * node = (Completed*)myallocate(sizeof(Completed) , LIBRARY);
+    if (node == NULL) {
+        printf("No more available for library calls . Terminating process\n");
+        exit(0);
+    }
     node->tcb = thread;
     node->next = NULL;
     //sigprocmask(SIG_BLOCK , &set , NULL);
@@ -219,20 +256,20 @@ void FreeResources(my_p_thread_t thread) {
     
     //free resources
     Completed * node = temp->next;
-    free(node->tcb->context->uc_stack.ss_sp);    
+    mydeallocate(node->tcb->context->uc_stack.ss_sp , LIBRARY);    
     node->tcb->context->uc_stack.ss_sp = NULL;
-    free(node->tcb->context);
+    mydeallocate(node->tcb->context , LIBRARY);
     node->tcb->context = NULL;
-    free(node->tcb);
+    mydeallocate(node->tcb , LIBRARY);
     node->tcb = NULL;
     temp->next = node->next;
     node->next = NULL;
-    free(node);
+    mydeallocate(node , LIBRARY);
     node = NULL;
 }
 
 void PushToFront(Node * node) {
-    //create new tcb node
+	    //create new tcb node
     if (NULL == head) {
         node->next == NULL;
         tail = node;  
@@ -391,8 +428,18 @@ void IncreasePriority() {
     //sigprocmask(SIG_UNBLOCK , &set , NULL);
 }
 
+int GetThreadId() {
+    Node * current = running;
+    if (current->tcb->id == NULL) {
+        printf("Address is null\n");
+    }
+    int thread_id = (int)*(current->tcb->id);
+    return thread_id;
+}
+
 void Scheduler() {
    if (running != NULL) {
+       ProtectContextPages();
        if (tick_counter == 3)  {
        //check for waiting threads
            Node * node = GetWaitingHead();
@@ -417,7 +464,11 @@ void Scheduler() {
            //decrease priority by pushing at end and increase next burst time
            if (state == WAITING) {
                //add to end of waiting queue
-               Waiting * node = (Waiting*)malloc(sizeof(Waiting));
+               Waiting * node = (Waiting*)myallocate(sizeof(Waiting) , LIBRARY);
+	       if (node == NULL) {
+	       	   printf("No more available for library calls . Terminating process\n");
+	           exit(0);
+	       }
                node->node_ptr = running;
                PushToWaitingEnd(node); 
            }
@@ -437,6 +488,7 @@ void Scheduler() {
                //set the next node in the queue as the oldest
                oldest = running;
            }
+           UnprotectContextPages();
            sigprocmask(SIG_UNBLOCK , &set , NULL);
            swapcontext(current->tcb->context , running->tcb->context);
        }
